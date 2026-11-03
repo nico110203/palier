@@ -38,6 +38,38 @@ function NumField({ value, label, unit, onSave, decimal = true }: { value: numbe
   )
 }
 
+/** Nom de l'exercice, modifiable sur place au toucher. */
+function ExoName({ ex, longPressed }: { ex: Exercise; longPressed: () => boolean }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    const clean = draft?.trim()
+    if (clean && clean !== ex.name) db.exercises.update(ex.id!, { name: clean })
+    setDraft(null)
+  }
+  if (draft === null) {
+    return (
+      <button className="exo-name" onClick={() => !longPressed() && setDraft(ex.name)} aria-label={`Renommer ${ex.name}`}>
+        {ex.name}
+      </button>
+    )
+  }
+  return (
+    <input
+      className="exo-name-input"
+      value={draft}
+      autoFocus
+      aria-label="Nom de l'exercice"
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(null)
+      }}
+    />
+  )
+}
+
 /** Dernière série enregistrée, pré-remplie dans les champs. */
 const latest = (logs: Log[]) => logs.reduce<Log | undefined>((a, l) => (!a || l.at > a.at ? l : a), undefined)
 
@@ -88,7 +120,7 @@ export function MuscleView({ id }: { id: number }) {
             <span className="label">Nom du muscle</span>
             <input className="input" value={muscle.name} onChange={(e) => db.templates.update(id, { name: e.target.value.toUpperCase() })} />
           </label>
-          <p className="caption hint" style={{ margin: 0 }}>Flèches pour changer l'ordre, case pour masquer un exercice.</p>
+          <p className="caption hint" style={{ margin: 0 }}>Flèches pour changer l'ordre, case pour masquer un exercice. Touche un nom pour voir son historique.</p>
         </div>
       )}
 
@@ -101,10 +133,10 @@ export function MuscleView({ id }: { id: number }) {
             return (
               <div key={slot.exerciseId} className={`card order-card${slot.hidden ? ' is-hidden' : ''}`}>
                 <div className="row">
-                  <span className="grow">
-                    <span className="title-md" style={{ display: 'block' }}>{ex.name}</span>
-                    {ex.detail && <span className="caption">{ex.detail}</span>}
-                  </span>
+                  <button className="exo-name grow" onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
+                    <span className="title-md">{ex.name}</span>
+                    <Icon name="chart" size={16} />
+                  </button>
                   <button className="btn btn-ghost btn-icon" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Monter ${ex.name}`}>
                     <Icon name="up" />
                   </button>
@@ -126,15 +158,12 @@ export function MuscleView({ id }: { id: number }) {
 
           return (
             <section key={slot.exerciseId} className="card exo" aria-label={ex.name} {...press.handlers}>
-              <button className="exo-name" onClick={() => !press.fired() && nav.open({ type: 'exercise', id: ex.id! })}>
-                {slot.superset && (
-                  <span className="label superset-tag">
-                    <Icon name="link" size={16} /> Enchaîné
-                  </span>
-                )}
-                <span className="title-md" style={{ display: 'block' }}>{ex.name}</span>
-                {ex.detail && <span className="exo-detail">{ex.detail}</span>}
-              </button>
+              {slot.superset && (
+                <span className="superset-tag" aria-label="Enchaîné">
+                  <Icon name="link" size={14} />
+                </span>
+              )}
+              <ExoName ex={ex} longPressed={press.fired} />
 
               <div className="set-fields">
                 {cardio ? (
