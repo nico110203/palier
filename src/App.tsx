@@ -1,18 +1,11 @@
 import { useEffect, useState } from 'react'
 import { db, getSetting, setSetting } from './db'
-import { NavContext, useNavState, type Tab } from './nav'
+import { NavContext, useNavState } from './nav'
 import { applyNotes, INITIAL_NOTES, parseNotes } from './notes'
-import { Icon } from './components/ui'
 import { Muscles } from './screens/Muscles'
 import { MuscleView } from './screens/Muscle'
-import { ExerciseDetail, History } from './screens/History'
-import { applyTheme, Manage, NotesImport, type Theme } from './screens/Manage'
-
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'muscles', label: 'Muscles', icon: 'dumbbell' },
-  { id: 'historique', label: 'Historique', icon: 'chart' },
-  { id: 'exercices', label: 'Exercices', icon: 'list' },
-]
+import { ExerciseDetail } from './screens/History'
+import { applyTheme, NotesImport, type Theme } from './screens/Manage'
 
 /** Premier lancement : reprend les notes du bloc-notes. Mémorisé pour le double effet de StrictMode. */
 let seeding: Promise<void> | null = null
@@ -48,22 +41,12 @@ export default function App() {
   if (v?.type === 'muscle') screen = <MuscleView id={v.id} />
   else if (v?.type === 'exercise') screen = <ExerciseDetail id={v.id} />
   else if (v?.type === 'notes') screen = <NotesImport />
-  else if (nav.tab === 'historique') screen = <History />
-  else if (nav.tab === 'exercices') screen = <Manage />
   else screen = <Muscles />
 
   return (
     <NavContext.Provider value={nav}>
       <div className="app">
         {screen}
-        <nav className="tabs" aria-label="Navigation">
-          {TABS.map((t) => (
-            <button key={t.id} className="tab" aria-current={nav.tab === t.id && !v ? 'page' : undefined} onClick={() => nav.setTab(t.id)}>
-              <Icon name={t.icon} />
-              {t.label}
-            </button>
-          ))}
-        </nav>
       </div>
     </NavContext.Provider>
   )

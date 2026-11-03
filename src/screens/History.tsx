@@ -103,20 +103,27 @@ export function ExerciseDetail({ id }: { id: number }) {
       ) : (
         <>
           {cardio ? (
-            <div>
-              <span className="label">Vitesse max</span>
-              <div className="numeral-xl">{num(Math.max(...points.map((p) => p.value)))}&nbsp;km/h</div>
+            <div className="pr-card">
+              <span className="badge badge-pr">VITESSE MAX</span>
+              <div className="numeral-xl" style={{ marginTop: 'var(--space-2)' }}>{num(Math.max(...points.map((p) => p.value)))}&nbsp;km/h</div>
             </div>
           ) : (
             pr && (
-              <div>
-                <span className="badge badge-pr">PR</span>
+              <div className="pr-card">
+                <span className="badge badge-pr">RECORD</span>
                 <div className="numeral-xl" style={{ marginTop: 'var(--space-2)' }}>
                   {kg(pr.kg)}
                 </div>
                 <span className="caption">
                   × {pr.reps} répétitions{ex.perSide ? ' · par côté' : ''}
                 </span>
+                <div className="pr-bar" aria-hidden="true">
+                  <span style={{ width: `${Math.min(100, Math.round((last.kg / (pr.kg || 1)) * 100))}%` }} />
+                </div>
+                <div className="row caption" style={{ marginTop: 'var(--space-2)' }}>
+                  <span className="grow">Dernière : {kg(last.kg)}</span>
+                  <span>{Math.round((last.kg / (pr.kg || 1)) * 100)} %</span>
+                </div>
               </div>
             )
           )}

@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { dayKey, db, saveToday, sortGroups, type Exercise, type Log, type MuscleSlot } from '../db'
-import { cardioLabel, num, parseNum, setLabel, shortDate } from '../format'
+import { db, saveToday, sortGroups, type Exercise, type Log, type MuscleSlot } from '../db'
+import { num, parseNum } from '../format'
 import { useNav } from '../nav'
 import { Icon, ScreenHead, Sheet, useLongPress } from '../components/ui'
 
 /** Champ numérique éditable sur place : chaque frappe est enregistrée. */
-function NumField({ value, label, unit, onSave, decimal = true, pr = false }: { value: number; label: string; unit: string; onSave: (n: number) => void; decimal?: boolean; pr?: boolean }) {
+function NumField({ value, label, unit, onSave, decimal = true }: { value: number; label: string; unit: string; onSave: (n: number) => void; decimal?: boolean }) {
   const [draft, setDraft] = useState(num(value))
   const focused = useRef(false)
   useEffect(() => {
     if (!focused.current) setDraft(num(value))
   }, [value])
   return (
-    <label className={`num-field${pr ? ' is-pr' : ''}`}>
+    <label className="num-field">
       <input
         className="numeral-sm"
         inputMode={decimal ? 'decimal' : 'numeric'}
@@ -33,25 +33,13 @@ function NumField({ value, label, unit, onSave, decimal = true, pr = false }: { 
           onSave(decimal ? parseNum(v) : Math.round(parseNum(v)))
         }}
       />
-      <span className="num-unit">{pr ? `${unit} · PR` : unit}</span>
+      <span className="num-unit">{unit}</span>
     </label>
   )
 }
 
-interface ExState {
-  current?: Log
-  previous?: Log
-  best?: { kg: number; reps: number }
-}
-
-function summarize(logs: Log[]): ExState {
-  const today = dayKey()
-  const sorted = [...logs].sort((a, b) => b.at - a.at)
-  const past = sorted.filter((l) => l.day !== today)
-  let best: ExState['best']
-  for (const l of past) if (!best || l.kg > best.kg || (l.kg === best.kg && l.reps > best.reps)) best = { kg: l.kg, reps: l.reps }
-  return { current: sorted[0], previous: past[0], best }
-}
+/** Dernière série enregistrée, pré-remplie dans les champs. */
+const latest = (logs: Log[]) => logs.reduce<Log | undefined>((a, l) => (!a || l.at > a.at ? l : a), undefined)
 
 export function MuscleView({ id }: { id: number }) {
   const nav = useNav()
@@ -132,11 +120,9 @@ export function MuscleView({ id }: { id: number }) {
             )
           }
 
-          const st = summarize(logs.filter((l) => l.exerciseId === ex.id))
-          const cur = st.current
+          const cur = latest(logs.filter((l) => l.exerciseId === ex.id))
           const cardio = ex.kind === 'cardio'
           const save = (patch: Partial<Log>) => saveToday(ex.id!, patch, cur ?? {})
-          const isPr = !cardio && !!st.best && (cur?.kg ?? 0) > st.best.kg
 
           return (
             <section key={slot.exerciseId} className="card exo" aria-label={ex.name} {...press.handlers}>
@@ -148,17 +134,6 @@ export function MuscleView({ id }: { id: number }) {
                 )}
                 <span className="title-md" style={{ display: 'block' }}>{ex.name}</span>
                 {ex.detail && <span className="exo-detail">{ex.detail}</span>}
-                <span className="caption" style={{ display: 'block', marginTop: 'var(--space-1)' }}>
-                  {st.previous
-                    ? `Dernière fois ${cardio ? cardioLabel(st.previous) : `${num(st.previous.kg)} × ${st.previous.reps}`} · ${shortDate(st.previous.at)}`
-                    : 'Première fois'}
-                </span>
-                {st.best && !cardio && (
-                  <span className="caption" style={{ display: 'block' }}>
-                    PR {setLabel(st.best.kg, st.best.reps)}
-                    {ex.perSide ? ' par côté' : ''}
-                  </span>
-                )}
               </button>
 
               <div className="set-fields">
@@ -171,7 +146,7 @@ export function MuscleView({ id }: { id: number }) {
                   <>
                     <NumField value={cur?.reps ?? 0} unit="reps" decimal={false} label={`${ex.name}, répétitions`} onSave={(v) => save({ reps: v })} />
                     <span className="times" aria-hidden="true">×</span>
-                    <NumField value={cur?.kg ?? 0} unit="kg" pr={isPr} label={`${ex.name}, charge en kg`} onSave={(v) => save({ kg: v })} />
+                    <NumField value={cur?.kg ?? 0} unit="kg" label={`${ex.name}, charge en kg`} onSave={(v) => save({ kg: v })} />
                   </>
                 )}
               </div>
