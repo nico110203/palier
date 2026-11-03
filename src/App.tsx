@@ -35,7 +35,9 @@ export default function App() {
   }, [])
 
   // Remonte en haut une fois le nouvel écran posé, pas avant : sinon l'ancien écran saute.
-  useLayoutEffect(() => window.scrollTo(0, 0), [nav.view, nav.tab])
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0)
+  }, [nav.view, nav.tab])
 
   if (!ready) return null
   const v = nav.view
