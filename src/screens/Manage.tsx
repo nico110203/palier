@@ -166,6 +166,10 @@ function ExerciseEditor({ ex, groups, onClose }: { ex: Exercise; groups: string[
           <span className="label">Nom</span>
           <input className="input" value={draft.name} onChange={(e) => set({ name: e.target.value })} autoFocus={!ex.id} />
         </label>
+        <label className="field">
+          <span className="label">Nom complet (facultatif)</span>
+          <input className="input" placeholder="ex. Développé couché" value={draft.detail ?? ''} onChange={(e) => set({ detail: e.target.value || undefined })} />
+        </label>
         <div className="field">
           <span className="label">Groupe</span>
           <div className="chips">
@@ -200,16 +204,6 @@ function ExerciseEditor({ ex, groups, onClose }: { ex: Exercise; groups: string[
                 {[0.5, 1, 2, 2.5, 5].map((s) => (
                   <button key={s} className="chip" aria-pressed={draft.step === s} onClick={() => set({ step: s })}>
                     {num(s)}&nbsp;kg
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <span className="label">Repos</span>
-              <div className="chips">
-                {[60, 90, 120, 150, 180].map((s) => (
-                  <button key={s} className="chip" aria-pressed={draft.rest === s} onClick={() => set({ rest: s })}>
-                    {s >= 120 ? `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60}` : ''}` : `${s} s`}
                   </button>
                 ))}
               </div>

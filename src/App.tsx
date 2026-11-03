@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { db, getSetting, setSetting } from './db'
 import { NavContext, useNavState, type Tab } from './nav'
 import { applyNotes, INITIAL_NOTES, parseNotes } from './notes'
-import { RestTimer } from './components/RestTimer'
 import { Icon } from './components/ui'
 import { Home } from './screens/Home'
 import { Workout } from './screens/Workout'
@@ -19,9 +18,15 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 let seeding: Promise<void> | null = null
 function seedOnce() {
   seeding ??= (async () => {
-    if (await getSetting('seeded', false)) return
-    if (!(await db.exercises.count())) await applyNotes(parseNotes(INITIAL_NOTES))
-    await setSetting('seeded', true)
+    if (!(await getSetting('seeded', false))) {
+      if (!(await db.exercises.count())) await applyNotes(parseNotes(INITIAL_NOTES))
+      await setSetting('seeded', true)
+    }
+    // v2 : nom complet sous les abréviations.
+    if (!(await getSetting('v2', false))) {
+      await db.exercises.filter((e) => e.name === 'DCH' && !e.detail).modify({ detail: 'Développé couché' })
+      await setSetting('v2', true)
+    }
   })()
   return seeding
 }
@@ -53,7 +58,6 @@ export default function App() {
     <NavContext.Provider value={nav}>
       <div className="app">
         {screen}
-        <RestTimer />
         <nav className="tabs" aria-label="Navigation">
           {TABS.map((t) => (
             <button key={t.id} className="tab" aria-current={nav.tab === t.id && !v ? 'page' : undefined} onClick={() => nav.setTab(t.id)}>

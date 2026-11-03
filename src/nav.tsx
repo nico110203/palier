@@ -15,10 +15,6 @@ interface Nav {
   setTab: (t: Tab) => void
   open: (v: View) => void
   back: () => void
-  rest: { endAt: number; total: number } | null
-  startRest: (seconds: number) => void
-  stopRest: () => void
-  addRest: (seconds: number) => void
 }
 
 export const NavContext = createContext<Nav>(null!)
@@ -28,7 +24,6 @@ export const useNav = () => useContext(NavContext)
 export function useNavState(): Nav {
   const [tab, setTabState] = useState<Tab>('seance')
   const [stack, setStack] = useState<View[]>([])
-  const [rest, setRest] = useState<Nav['rest']>(null)
   const depth = useRef(0)
 
   useEffect(() => {
@@ -69,9 +64,5 @@ export function useNavState(): Nav {
     setTab,
     open,
     back,
-    rest,
-    startRest: useCallback((s: number) => setRest(s > 0 ? { endAt: Date.now() + s * 1000, total: s } : null), []),
-    stopRest: useCallback(() => setRest(null), []),
-    addRest: useCallback((s: number) => setRest((r) => (r ? { endAt: r.endAt + s * 1000, total: r.total + s } : r)), []),
   }
 }

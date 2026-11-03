@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, lastSetsFor, sortGroups, type Exercise, type SetEntry } from '../db'
-import { cardioLabel, duration, num, setLabel } from '../format'
+import { cardioLabel, duration, num, parseNum, setLabel } from '../format'
 import { useNav } from '../nav'
-import { addExerciseToSession, addSet, best, deleteSession, finishSession } from '../session'
-import { DeltaBadge, Icon, ScreenHead, Sheet, Stepper } from '../components/ui'
+import { addExerciseToSession, addSet, best, deleteSession, finishSession, removeLastSet, setSlotHidden } from '../session'
+import { Icon, ScreenHead, Sheet } from '../components/ui'
 
 function useWakeLock() {
   useEffect(() => {
@@ -26,6 +26,39 @@ function useWakeLock() {
   }, [])
 }
 
+/** Champ numérique éditable sur place : chaque frappe est enregistrée. */
+function NumField({ value, label, unit, onSave, decimal = true, pr = false }: { value: number; label: string; unit?: string; onSave: (n: number) => void; decimal?: boolean; pr?: boolean }) {
+  const [draft, setDraft] = useState(num(value))
+  const focused = useRef(false)
+  useEffect(() => {
+    if (!focused.current) setDraft(num(value))
+  }, [value])
+  return (
+    <label className={`num-field${pr ? ' is-pr' : ''}`}>
+      <input
+        className="numeral-sm"
+        inputMode={decimal ? 'decimal' : 'numeric'}
+        aria-label={label}
+        value={draft}
+        onFocus={(e) => {
+          focused.current = true
+          e.currentTarget.select()
+        }}
+        onBlur={() => {
+          focused.current = false
+          setDraft(num(value))
+        }}
+        onChange={(e) => {
+          const v = e.currentTarget.value.replace(/[^\d.,]/g, '')
+          setDraft(v)
+          onSave(decimal ? parseNum(v) : Math.round(parseNum(v)))
+        }}
+      />
+      {unit && <span className="num-unit">{unit}</span>}
+    </label>
+  )
+}
+
 export function Workout({ sessionId }: { sessionId: number }) {
   const nav = useNav()
   useWakeLock()
@@ -41,6 +74,7 @@ export function Workout({ sessionId }: { sessionId: number }) {
     const seen = new Map<number, number>()
     const last: SetEntry[][] = []
     const prs = new Map<number, { kg: number; reps: number } | null>()
+    const ended = new Set((await db.sessions.filter((s) => s.endedAt != null).toArray()).map((s) => s.id))
     for (const slot of session.slots) {
       const all = await lastSetsFor(slot.exerciseId, sessionId)
       const occ = seen.get(slot.exerciseId) ?? 0
@@ -48,7 +82,6 @@ export function Workout({ sessionId }: { sessionId: number }) {
       const slots = [...new Set(all.map((s) => s.slot))].sort((a, b) => a - b)
       last.push(all.filter((s) => s.slot === (slots[occ] ?? slots[slots.length - 1])))
       if (!prs.has(slot.exerciseId)) {
-        const ended = new Set((await db.sessions.filter((s) => s.endedAt != null).toArray()).map((s) => s.id))
         const past = await db.sets.where('exerciseId').equals(slot.exerciseId).filter((s) => ended.has(s.sessionId) && s.sessionId !== sessionId).toArray()
         prs.set(slot.exerciseId, best(past))
       }
@@ -56,31 +89,15 @@ export function Workout({ sessionId }: { sessionId: number }) {
     return { last, prs }
   }, [sessionId, slotKey])
 
-  const [editing, setEditing] = useState<number | null>(null)
+  const [editMode, setEditMode] = useState(false)
   const [picking, setPicking] = useState(false)
   const [confirmQuit, setConfirmQuit] = useState(false)
-  const [, tick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => tick((t) => t + 1), 30_000)
-    return () => clearInterval(id)
-  }, [])
 
   if (!session) return null
-  const doneCount = sets.filter((s) => s.done).length
-  const editRow = sets.find((s) => s.id === editing)
-
-  const toggle = async (row: SetEntry, slot: number) => {
-    const done = !row.done
-    await db.sets.update(row.id!, { done })
-    const ex = exById.get(row.exerciseId)
-    if (!done || !ex || ex.kind === 'cardio') return
-    const nextLinked = session.slots[slot + 1]?.superset
-    if (nextLinked) nav.stopRest()
-    else nav.startRest(ex.rest)
-  }
+  const hiddenCount = session.slots.filter((s) => s.hidden).length
+  const save = (row: SetEntry, patch: Partial<SetEntry>) => db.sets.update(row.id!, patch)
 
   const finish = async () => {
-    nav.stopRest()
     await finishSession(sessionId)
     nav.back()
   }
@@ -88,89 +105,125 @@ export function Workout({ sessionId }: { sessionId: number }) {
   return (
     <main className="screen">
       <ScreenHead title={session.name} onBack={nav.back}>
-        <span className="caption">{duration(Date.now() - session.startedAt)}</span>
+        {editMode ? (
+          <button className="btn btn-primary" onClick={() => setEditMode(false)}>
+            OK
+          </button>
+        ) : (
+          <>
+            <button className="btn btn-ghost btn-icon" onClick={() => setPicking(true)} aria-label="Ajouter un exercice">
+              <Icon name="plus" />
+            </button>
+            <button className="btn btn-ghost btn-icon" onClick={() => setEditMode(true)} aria-label="Masquer ou afficher des exercices">
+              <Icon name="more" />
+            </button>
+          </>
+        )}
       </ScreenHead>
+
+      {editMode && <p className="caption" style={{ marginTop: 'calc(-1 * var(--space-4))' }}>Coche les exercices à masquer. Ils restent masqués pour les prochaines séances.</p>}
 
       <div className="stack">
         {session.slots.map((slot, i) => {
           const ex = exById.get(slot.exerciseId)
-          if (!ex) return null
+          if (!ex || (slot.hidden && !editMode)) return null
           const rows = sets.filter((s) => s.slot === i).sort((a, b) => a.index - b.index)
           const last = history?.last[i] ?? []
           const pr = history?.prs.get(ex.id!)
+          const cardio = ex.kind === 'cardio'
+
+          if (editMode) {
+            return (
+              <label key={i} className={`card toggle-row${slot.hidden ? ' is-hidden' : ''}`}>
+                <span className="grow">
+                  <span className="title-md" style={{ display: 'block' }}>{ex.name}</span>
+                  {ex.detail && <span className="caption">{ex.detail}</span>}
+                </span>
+                <span className="caption">Masquer</span>
+                <input type="checkbox" checked={!!slot.hidden} onChange={(e) => setSlotHidden(sessionId, i, e.target.checked)} />
+              </label>
+            )
+          }
+
           return (
-            <section key={i} className="card" aria-label={ex.name}>
-              <div className="row" style={{ marginBottom: 'var(--space-3)' }}>
-                <button className="grow" style={{ background: 'none', border: 0, padding: 0, textAlign: 'left' }} onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
-                  {slot.superset && (
-                    <span className="label superset-tag">
-                      <Icon name="link" size={16} /> Enchaîné
-                    </span>
-                  )}
-                  <h2 className="title-md">{ex.name}</h2>
-                  <span className="caption">
-                    {ex.perSide ? 'Par côté · ' : ''}
-                    {pr ? `PR ${setLabel(pr.kg, pr.reps)}` : ex.kind === 'cardio' ? 'Cardio' : 'Pas encore de record'}
+            <section key={i} className="card exo" aria-label={ex.name}>
+              <button className="exo-name" onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
+                {slot.superset && (
+                  <span className="label superset-tag">
+                    <Icon name="link" size={16} /> Enchaîné
                   </span>
-                </button>
-              </div>
-              <div className="stack-sm">
-                {rows.map((row) => {
-                  const prev = last[row.index]
-                  const isPr = ex.kind === 'strength' && row.done && pr != null && row.kg > pr.kg
-                  return (
-                    <div key={row.id} className={`set-row${row.done ? ' done' : ''}`}>
-                      <button className="set-main" onClick={() => setEditing(row.id!)} aria-label={`Modifier la série ${row.index + 1}`}>
-                        <span className="label set-num">{row.index + 1}</span>
-                        <span className="grow">
-                          <span className="numeral-sm" style={{ display: 'block' }}>
-                            {ex.kind === 'cardio' ? cardioLabel(row) : setLabel(row.kg, row.reps)}
-                          </span>
-                          <span className="set-meta">
-                            {prev && (
-                              <span className="caption">
-                                Dernière fois {ex.kind === 'cardio' ? cardioLabel(prev) : `${num(prev.kg)} × ${prev.reps}`}
-                              </span>
-                            )}
-                            {prev && ex.kind === 'strength' && (row.kg !== prev.kg ? <DeltaBadge delta={row.kg - prev.kg} /> : row.reps !== prev.reps ? <DeltaBadge delta={row.reps - prev.reps} unit="reps" /> : <DeltaBadge delta={0} />)}
-                            {isPr && <span className="badge badge-pr">PR</span>}
-                          </span>
-                        </span>
-                      </button>
-                      <button className="set-check" aria-pressed={row.done} aria-label={`Série ${row.index + 1} faite`} onClick={() => toggle(row, i)}>
-                        <Icon name="check" />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-              <button className="btn btn-ghost" style={{ marginTop: 'var(--space-2)', paddingLeft: 0 }} onClick={() => addSet(sessionId, ex.id!, i)}>
-                <Icon name="plus" /> Ajouter une série
+                )}
+                <span className="title-md" style={{ display: 'block' }}>{ex.name}</span>
+                {ex.detail && <span className="exo-detail">{ex.detail}</span>}
+                <span className="caption" style={{ display: 'block', marginTop: 'var(--space-1)' }}>
+                  {last.length ? `Dernière fois ${last.map((s) => (cardio ? cardioLabel(s) : `${num(s.kg)} × ${s.reps}`)).join(', ')}` : 'Première fois'}
+                </span>
+                {pr && !cardio && <span className="caption" style={{ display: 'block' }}>PR {setLabel(pr.kg, pr.reps)}{ex.perSide ? ' par côté' : ''}</span>}
               </button>
+
+              <div className="exo-sets">
+                {rows.map((row) => (
+                  <div key={row.id} className="set-fields">
+                    {cardio ? (
+                      <>
+                        <NumField value={row.speed ?? 0} unit="km/h" label={`Série ${row.index + 1}, vitesse`} onSave={(v) => save(row, { speed: v })} />
+                        <NumField value={row.minutes ?? 0} unit="min" label={`Série ${row.index + 1}, durée`} onSave={(v) => save(row, { minutes: v })} />
+                      </>
+                    ) : (
+                      <>
+                        <NumField value={row.reps} unit="reps" decimal={false} label={`Série ${row.index + 1}, répétitions`} onSave={(v) => save(row, { reps: v })} />
+                        <span className="times" aria-hidden="true">×</span>
+                        <NumField value={row.kg} unit={pr && row.kg > pr.kg ? 'kg · PR' : 'kg'} pr={!!pr && row.kg > pr.kg} label={`Série ${row.index + 1}, charge en kg`} onSave={(v) => save(row, { kg: v })} />
+                      </>
+                    )}
+                  </div>
+                ))}
+                {!cardio && (
+                  <div className="set-actions">
+                    <button className="btn btn-ghost btn-icon" onClick={() => removeLastSet(sessionId, i)} disabled={rows.length <= 1} aria-label="Retirer une série">
+                      <Icon name="minus" size={20} />
+                    </button>
+                    <button className="btn btn-ghost btn-icon" onClick={() => addSet(sessionId, ex.id!, i)} aria-label="Ajouter une série">
+                      <Icon name="plus" size={20} />
+                    </button>
+                  </div>
+                )}
+              </div>
             </section>
           )
         })}
 
-        <button className="btn btn-lg" onClick={() => setPicking(true)}>
-          <Icon name="plus" /> Ajouter un exercice
-        </button>
-        <button className="btn btn-lg btn-primary" onClick={finish} disabled={!doneCount}>
-          Terminer la séance
-        </button>
-        <button className="btn btn-ghost" onClick={() => setConfirmQuit(true)}>
-          Abandonner la séance
-        </button>
+        {!editMode && hiddenCount > 0 && (
+          <button className="btn btn-ghost" onClick={() => setEditMode(true)}>
+            {hiddenCount} exercice{hiddenCount > 1 ? 's' : ''} masqué{hiddenCount > 1 ? 's' : ''}, afficher
+          </button>
+        )}
+
+        {!editMode && (
+          <>
+            <button className="btn btn-lg btn-primary" onClick={finish}>
+              Terminer la séance
+            </button>
+            <p className="caption" style={{ textAlign: 'center', margin: 0 }}>
+              Enregistré à chaque modification · {duration(Date.now() - session.startedAt)}
+            </p>
+            <button className="btn btn-ghost" onClick={() => setConfirmQuit(true)}>
+              Abandonner la séance
+            </button>
+          </>
+        )}
       </div>
 
-      {editRow && exById.get(editRow.exerciseId) && (
-        <SetEditor row={editRow} ex={exById.get(editRow.exerciseId)!} onClose={() => setEditing(null)} />
-      )}
       {picking && (
         <ExercisePicker
           exercises={exercises}
+          group={session.name}
+          exclude={session.slots.filter((s) => !s.hidden).map((s) => s.exerciseId)}
           onPick={async (id) => {
             setPicking(false)
-            await addExerciseToSession(sessionId, id)
+            const hiddenSlot = session.slots.findIndex((s) => s.exerciseId === id && s.hidden)
+            if (hiddenSlot >= 0) await setSlotHidden(sessionId, hiddenSlot, false)
+            else await addExerciseToSession(sessionId, id)
           }}
           onClose={() => setPicking(false)}
         />
@@ -182,7 +235,6 @@ export function Workout({ sessionId }: { sessionId: number }) {
             <button
               className="btn btn-lg btn-danger"
               onClick={async () => {
-                nav.stopRest()
                 await deleteSession(sessionId)
                 nav.back()
               }}
@@ -199,48 +251,50 @@ export function Workout({ sessionId }: { sessionId: number }) {
   )
 }
 
-function SetEditor({ row, ex, onClose }: { row: SetEntry; ex: Exercise; onClose: () => void }) {
-  const set = (patch: Partial<SetEntry>) => db.sets.update(row.id!, patch)
-  return (
-    <Sheet title={`${ex.name} · série ${row.index + 1}`} onClose={onClose}>
-      <div className="stack">
-        {ex.kind === 'cardio' ? (
-          <>
-            <Stepper label="Vitesse" unit="km/h" value={row.speed ?? 0} step={0.5} onChange={(v) => set({ speed: v })} />
-            <Stepper label="Inclinaison" unit="%" value={row.incline ?? 0} step={1} onChange={(v) => set({ incline: v })} />
-            <Stepper label="Durée" unit="min" value={row.minutes ?? 0} step={1} onChange={(v) => set({ minutes: v })} />
-          </>
-        ) : (
-          <>
-            <Stepper label={ex.perSide ? 'Charge par côté' : 'Charge'} unit="kg" value={row.kg} step={ex.step} onChange={(v) => set({ kg: v })} />
-            <Stepper label="Répétitions" unit="reps" value={row.reps} step={1} onChange={(v) => set({ reps: Math.round(v) })} />
-          </>
-        )}
-        <button className="btn btn-lg btn-primary" onClick={onClose}>
-          Valider
-        </button>
-        <button
-          className="btn btn-ghost"
-          style={{ color: 'var(--danger)' }}
-          onClick={async () => {
-            await db.sets.delete(row.id!)
-            onClose()
-          }}
-        >
-          <Icon name="trash" /> Supprimer la série
-        </button>
-      </div>
-    </Sheet>
-  )
-}
+/** Choisir un exercice existant (celui du groupe en premier) ou en créer un nouveau. */
+export function ExercisePicker({
+  exercises,
+  group,
+  exclude = [],
+  onPick,
+  onClose,
+}: {
+  exercises: Exercise[]
+  group?: string
+  exclude?: number[]
+  onPick: (id: number) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState('')
+  const active = exercises.filter((e) => !e.archived && !exclude.includes(e.id!))
+  const groups = sortGroups([...new Set(active.map((e) => e.group))]).sort((a, b) => (a === group ? -1 : b === group ? 1 : 0))
+  const known = new Set(exercises.map((e) => e.group))
 
-export function ExercisePicker({ exercises, onPick, onClose }: { exercises: Exercise[]; onPick: (id: number) => void; onClose: () => void }) {
-  const active = exercises.filter((e) => !e.archived)
-  const groups = sortGroups([...new Set(active.map((e) => e.group))])
+  const create = async () => {
+    const clean = name.trim()
+    if (!clean) return
+    const g = group && known.has(group) ? group : 'AUTRES'
+    const id = (await db.exercises.add({ name: clean, group: g, kind: 'strength', perSide: false, step: 2.5, rest: 0 })) as number
+    onPick(id)
+  }
+
   return (
     <Sheet title="Ajouter un exercice" onClose={onClose}>
+      <form
+        className="row"
+        style={{ marginBottom: 'var(--space-6)' }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          create()
+        }}
+      >
+        <input className="input grow" placeholder="Nouvel exercice" value={name} onChange={(e) => setName(e.target.value)} aria-label="Nom du nouvel exercice" />
+        <button className="btn btn-primary" disabled={!name.trim()}>
+          Créer
+        </button>
+      </form>
       {groups.map((g) => (
-        <div key={g} className="section" style={{ marginTop: 0, marginBottom: 'var(--space-6)' }}>
+        <div key={g} style={{ marginBottom: 'var(--space-6)' }}>
           <span className="label">{g}</span>
           {active
             .filter((e) => e.group === g)

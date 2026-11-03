@@ -206,3 +206,24 @@ textarea.input { padding: var(--space-3); min-height: 200px; font-family: var(--
 .error { color: var(--danger); font-size: 13px; line-height: 18px; }
 .superset { border-left: 0; }
 .superset-tag { display: inline-flex; align-items: center; gap: var(--space-1); }
+
+/* Exercise card: name left, editable sets right */
+.exo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; }
+.exo-name { background: none; border: 0; padding: 0; text-align: left; min-width: 0; }
+.exo-detail { display: block; font-size: 16px; line-height: 22px; color: var(--ink); }
+.exo-sets { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; }
+.set-fields { display: flex; align-items: center; gap: var(--space-2); }
+.times { font-size: 20px; line-height: 1; color: var(--ink-muted); }
+.num-field { position: relative; display: block; }
+.num-field input {
+  width: 72px; height: 48px; padding: 0 var(--space-2) 12px; text-align: center;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-card);
+  font-size: 20px;
+}
+.num-field input:focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 0; }
+.num-unit { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 11px; line-height: 12px; color: var(--ink-muted); pointer-events: none; }
+.set-actions { display: flex; gap: var(--space-1); margin-right: -10px; }
+.is-hidden { opacity: 0.55; }
+@media (max-width: 360px) { .num-field input { width: 60px; } }
+.num-field.is-pr input { border-color: var(--accent); background: var(--accent-soft); }
+.num-field.is-pr .num-unit { color: var(--accent); font-weight: 600; }

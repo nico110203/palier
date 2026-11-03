@@ -154,6 +154,7 @@ export async function applyNotes(groups: ParsedGroup[]): Promise<{ exercises: nu
       if (hit) return hit.id!
       const ex: Exercise = {
         name: e.name,
+        ...(e.name === 'DCH' ? { detail: 'Développé couché' } : {}),
         group,
         kind: e.kind,
         perSide: e.perSide,

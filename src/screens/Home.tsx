@@ -40,7 +40,7 @@ export function Home() {
         <div className="stack">
           {templates.map((t) => {
             const last = lastFor(t.name)
-            const names = t.slots.map((s) => exName.get(s.exerciseId)).filter(Boolean)
+            const names = t.slots.filter((s) => !s.hidden).map((s) => exName.get(s.exerciseId)).filter(Boolean)
             return (
               <button key={t.id} className="card card-button" disabled={!!active} onClick={() => start(t.name, t.id)} aria-label={`Commencer la séance ${t.name}`}>
                 <div className="row">

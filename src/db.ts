@@ -5,6 +5,8 @@ export type ExerciseKind = 'strength' | 'cardio'
 export interface Exercise {
   id?: number
   name: string
+  /** Nom complet affiché sous une abréviation (ex. DCH → Développé couché). */
+  detail?: string
   group: string
   kind: ExerciseKind
   perSide: boolean
@@ -19,6 +21,7 @@ export interface TemplateSlot {
   exerciseId: number
   /** Enchaîné avec l'exercice précédent (superset). */
   superset: boolean
+  hidden?: boolean
 }
 
 export interface Template {
