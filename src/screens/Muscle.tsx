@@ -42,16 +42,21 @@ const latest = (logs: Log[]) => logs.reduce<Log | undefined>((a, l) => (!a || l.
 
 export function MuscleView({ id }: { id: number }) {
   const nav = useNav()
-  const muscle = useLiveQuery(() => db.templates.get(id), [id])
-  const exercises = useLiveQuery(() => db.exercises.toArray()) ?? []
-  const ids = muscle?.slots.map((s) => s.exerciseId) ?? []
-  const logs = useLiveQuery(() => db.logs.where('exerciseId').anyOf(ids).toArray(), [ids.join(',')]) ?? []
+  // Muscle et séries lus ensemble : l'écran s'affiche d'un bloc, sans lignes qui apparaissent après coup.
+  const data = useLiveQuery(async () => {
+    const muscle = await db.templates.get(id)
+    if (!muscle) return null
+    const logs = await db.logs.where('exerciseId').anyOf(muscle.slots.map((s) => s.exerciseId)).toArray()
+    return { muscle, logs }
+  }, [id])
+  const exercises = useLiveQuery(() => db.exercises.toArray())
   const [editing, setEditing] = useState(false)
   const [picking, setPicking] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const press = useLongPress(() => setEditing(true))
 
-  if (!muscle) return null
+  if (!data || !exercises) return null
+  const { muscle, logs } = data
   const exById = new Map(exercises.map((e) => [e.id!, e]))
   const slots = muscle.slots
   const saveSlots = (s: MuscleSlot[]) => db.templates.update(id, { slots: s })

@@ -22,6 +22,8 @@ export function useNavState(): Nav {
   const depth = useRef(0)
 
   useEffect(() => {
+    // Le navigateur ne restaure pas la position au retour : c'est App qui gère le défilement.
+    history.scrollRestoration = 'manual'
     const onPop = () => {
       if (depth.current > 0) {
         depth.current--
@@ -36,7 +38,6 @@ export function useNavState(): Nav {
     depth.current++
     history.pushState({ depth: depth.current }, '')
     setStack((s) => [...s, v])
-    window.scrollTo(0, 0)
   }, [])
 
   const back = useCallback(() => {
@@ -50,7 +51,6 @@ export function useNavState(): Nav {
       setStack([])
     }
     setTabState(t)
-    window.scrollTo(0, 0)
   }, [])
 
   return {

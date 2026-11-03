@@ -7,7 +7,8 @@ import { MuscleIcon } from '../components/MuscleIcon'
 
 export function Muscles() {
   const nav = useNav()
-  const muscles = useLiveQuery(() => db.templates.orderBy('order').toArray()) ?? []
+  const loaded = useLiveQuery(() => db.templates.orderBy('order').toArray())
+  const muscles = loaded ?? []
   const [ordering, setOrdering] = useState(false)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
@@ -20,6 +21,9 @@ export function Muscles() {
     setName('')
     nav.open({ type: 'muscle', id })
   }
+
+  // Rien tant que la base n'a pas répondu : évite le flash de l'état vide.
+  if (!loaded) return null
 
   if (ordering) {
     return (

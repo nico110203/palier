@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { db, getSetting, setSetting } from './db'
 import { NavContext, useNavState } from './nav'
 import { applyNotes, INITIAL_NOTES, parseNotes } from './notes'
@@ -33,6 +33,9 @@ export default function App() {
     getSetting<Theme>('theme', 'auto').then(applyTheme)
     seedOnce().finally(() => setReady(true))
   }, [])
+
+  // Remonte en haut une fois le nouvel écran posé, pas avant : sinon l'ancien écran saute.
+  useLayoutEffect(() => window.scrollTo(0, 0), [nav.view, nav.tab])
 
   if (!ready) return null
   const v = nav.view
