@@ -33,9 +33,16 @@ export function Chart({ points, unit }: { points: Point[]; unit: string }) {
   const dateIdx = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])]
   const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
   const last = points.length - 1
+  const area = `${d} L${x(last).toFixed(1)},${H - pad.b} L${x(0).toFixed(1)},${H - pad.b} Z`
 
   return (
     <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Évolution sur ${points.length} séances, de ${num(points[0].value)} à ${num(points[last].value)} ${unit}`}>
+      <defs>
+        <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop className="fill-top" offset="0" />
+          <stop className="fill-bottom" offset="1" />
+        </linearGradient>
+      </defs>
       {ticks.map((t) => (
         <g key={t}>
           <line className="grid" x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} />
@@ -49,6 +56,7 @@ export function Chart({ points, unit }: { points: Point[]; unit: string }) {
           {shortDate(points[i].at)}
         </text>
       ))}
+      <path className="area" d={area} />
       <path className="curve" d={d} />
       {points.map((p, i) =>
         i === last ? (

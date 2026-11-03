@@ -81,7 +81,7 @@ export function Manage() {
 
       <div className="section">
         <span className="label">Affichage</span>
-        <div className="chips" role="group" aria-label="Thème">
+        <div className="segmented" role="group" aria-label="Thème">
           {(['auto', 'light', 'dark'] as Theme[]).map((t) => (
             <button key={t} className="chip" aria-pressed={theme === t} onClick={() => changeTheme(t)}>
               {t === 'auto' ? 'Automatique' : t === 'light' ? 'Clair' : 'Sombre'}

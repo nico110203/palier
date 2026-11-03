@@ -24,7 +24,7 @@ export function History() {
   return (
     <main className="screen">
       <ScreenHead title="Historique" />
-      <div className="chips" role="group" aria-label="Affichage">
+      <div className="segmented" role="group" aria-label="Affichage">
         <button className="chip" aria-pressed={mode === 'journal'} onClick={() => setMode('journal')}>
           Par jour
         </button>
