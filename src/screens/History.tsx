@@ -1,59 +1,59 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, sortGroups, type SetEntry } from '../db'
-import { cardioLabel, duration, kg, num, setLabel, shortDate } from '../format'
+import { db, sortGroups, type Log } from '../db'
+import { cardioLabel, kg, num, setLabel, shortDate } from '../format'
 import { useNav } from '../nav'
-import { best, deleteSession, volume } from '../session'
 import { Chart } from '../components/Chart'
 import { Icon, ScreenHead, Sheet } from '../components/ui'
 
-function useFinished() {
-  return useLiveQuery(async () => {
-    const sessions = await db.sessions.filter((s) => s.endedAt != null).toArray()
-    const ids = new Set(sessions.map((s) => s.id))
-    const sets = await db.sets.filter((s) => ids.has(s.sessionId) && s.done).toArray()
-    return { sessions: sessions.sort((a, b) => b.startedAt - a.startedAt), sets }
-  })
+function bestOf(logs: Log[]) {
+  let b: { kg: number; reps: number } | null = null
+  for (const l of logs) if (!b || l.kg > b.kg || (l.kg === b.kg && l.reps > b.reps)) b = { kg: l.kg, reps: l.reps }
+  return b
 }
 
 export function History() {
   const nav = useNav()
-  const [mode, setMode] = useState<'sessions' | 'exercises'>('sessions')
-  const data = useFinished()
+  const [mode, setMode] = useState<'journal' | 'exercises'>('journal')
+  const logs = useLiveQuery(() => db.logs.orderBy('at').reverse().toArray()) ?? []
   const exercises = useLiveQuery(() => db.exercises.toArray()) ?? []
   const exById = new Map(exercises.map((e) => [e.id!, e]))
-  if (!data) return null
+
+  const days = [...new Set(logs.map((l) => l.day))]
 
   return (
     <main className="screen">
       <ScreenHead title="Historique" />
       <div className="chips" role="group" aria-label="Affichage">
-        <button className="chip" aria-pressed={mode === 'sessions'} onClick={() => setMode('sessions')}>
-          Séances
+        <button className="chip" aria-pressed={mode === 'journal'} onClick={() => setMode('journal')}>
+          Par jour
         </button>
         <button className="chip" aria-pressed={mode === 'exercises'} onClick={() => setMode('exercises')}>
-          Exercices
+          Par exercice
         </button>
       </div>
 
-      {mode === 'sessions' ? (
+      {mode === 'journal' ? (
         <div className="stack section" style={{ marginTop: 'var(--space-6)' }}>
-          {!data.sessions.length && <p className="empty">Aucune séance terminée pour l'instant.</p>}
-          {data.sessions.map((s) => {
-            const sets = data.sets.filter((x) => x.sessionId === s.id)
-            const vol = sets.reduce((v, x) => v + x.kg * x.reps * (exById.get(x.exerciseId)?.perSide ? 2 : 1), 0)
+          {!days.length && <p className="empty">Rien d'enregistré pour l'instant.</p>}
+          {days.map((d) => {
+            const list = logs.filter((l) => l.day === d)
             return (
-              <button key={s.id} className="card card-button" onClick={() => nav.open({ type: 'session', id: s.id! })}>
-                <div className="row">
-                  <span className="title-md grow">{s.name}</span>
-                  <span className="caption">{shortDate(s.startedAt)}</span>
+              <div key={d} className="card">
+                <span className="label">{shortDate(list[0].at)}</span>
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  {list.map((l) => {
+                    const ex = exById.get(l.exerciseId)
+                    if (!ex) return null
+                    return (
+                      <button key={l.id} className="list-item" onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
+                        <span className="grow">{ex.name}</span>
+                        <span className="numeral-sm">{ex.kind === 'cardio' ? cardioLabel(l) : setLabel(l.kg, l.reps)}</span>
+                      </button>
+                    )
+                  })}
                 </div>
-                <p className="caption" style={{ margin: 'var(--space-1) 0 0' }}>
-                  {sets.length} série{sets.length > 1 ? 's' : ''}
-                  {vol ? ` · ${kg(vol)}` : ''}
-                  {s.endedAt! > s.startedAt ? ` · ${duration(s.endedAt! - s.startedAt)}` : ''}
-                </p>
-              </button>
+              </div>
             )
           })}
         </div>
@@ -65,7 +65,7 @@ export function History() {
               {exercises
                 .filter((e) => e.group === g && !e.archived)
                 .map((e) => {
-                  const b = best(data.sets.filter((x) => x.exerciseId === e.id))
+                  const b = bestOf(logs.filter((l) => l.exerciseId === e.id))
                   return (
                     <button key={e.id} className="list-item" onClick={() => nav.open({ type: 'exercise', id: e.id! })}>
                       <span className="grow">{e.name}</span>
@@ -85,23 +85,21 @@ export function History() {
 export function ExerciseDetail({ id }: { id: number }) {
   const nav = useNav()
   const ex = useLiveQuery(() => db.exercises.get(id), [id])
-  const data = useFinished()
-  if (!ex || !data) return null
+  const logs = useLiveQuery(() => db.logs.where('exerciseId').equals(id).sortBy('at'), [id])
+  const [removing, setRemoving] = useState<Log | null>(null)
+  if (!ex || !logs) return null
 
-  const sets = data.sets.filter((s) => s.exerciseId === id)
-  const bySession = new Map<number, SetEntry[]>()
-  for (const s of sets) bySession.set(s.sessionId, [...(bySession.get(s.sessionId) ?? []), s])
-  const rows = [...bySession.entries()].map(([sid, list]) => ({ sid, at: list[0].at, list: list.sort((a, b) => a.slot - b.slot || a.index - b.index) })).sort((a, b) => a.at - b.at)
   const cardio = ex.kind === 'cardio'
-  const points = rows.map((r) => ({ at: r.at, value: cardio ? Math.max(...r.list.map((s) => s.speed ?? 0)) : best(r.list)!.kg }))
-  const pr = best(sets)
-  const lastRow = rows[rows.length - 1]
+  const points = logs.map((l) => ({ at: l.at, value: cardio ? l.speed ?? 0 : l.kg }))
+  const pr = bestOf(logs)
+  const last = logs[logs.length - 1]
 
   return (
     <main className="screen">
       <ScreenHead title={ex.name} onBack={nav.back} />
-      {!rows.length ? (
-        <p className="empty">Pas encore de séance pour cet exercice.</p>
+      {ex.detail && <p className="caption" style={{ marginTop: 'calc(-1 * var(--space-4))' }}>{ex.detail}</p>}
+      {!logs.length ? (
+        <p className="empty">Pas encore de valeur pour cet exercice.</p>
       ) : (
         <>
           {cardio ? (
@@ -125,101 +123,62 @@ export function ExerciseDetail({ id }: { id: number }) {
 
           <div className="stats section" style={{ marginTop: 'var(--space-6)' }}>
             <div className="stat">
-              <div className="label">Séances</div>
-              <div className="numeral-md">{rows.length}</div>
+              <div className="label">Jours</div>
+              <div className="numeral-md">{logs.length}</div>
             </div>
             <div className="stat">
               <div className="label">Dernière</div>
-              <div className="numeral-md">{shortDate(lastRow.at)}</div>
+              <div className="numeral-md">{shortDate(last.at)}</div>
             </div>
             <div className="stat">
-              <div className="label">{cardio ? 'Durée' : 'Volume'}</div>
-              <div className="numeral-md">{cardio ? `${num(lastRow.list[0].minutes ?? 0)} min` : kg(volume(lastRow.list, ex.perSide))}</div>
+              <div className="label">Progrès</div>
+              <div className="numeral-md">
+                {cardio ? `${num((last.speed ?? 0) - (logs[0].speed ?? 0))}` : `${(last.kg - logs[0].kg) >= 0 ? '+' : '−'}${num(Math.abs(last.kg - logs[0].kg))}`}
+              </div>
             </div>
           </div>
 
           <div className="section">
-            <span className="label">{cardio ? 'Vitesse par séance' : 'Meilleure série par séance'}</span>
-            <div className="card" style={{ borderRadius: 'var(--radius-lg)' }}>
+            <span className="label">{cardio ? 'Vitesse par jour' : 'Charge par jour'}</span>
+            <div className="card">
               <Chart points={points} unit={cardio ? 'km/h' : 'kg'} />
             </div>
           </div>
 
           <div className="section">
-            <span className="label">Séances</span>
+            <span className="label">Valeurs</span>
             <div className="card" style={{ paddingTop: 0, paddingBottom: 0 }}>
-              {[...rows].reverse().map((r) => (
-                <div key={r.sid} className="list-item" style={{ alignItems: 'flex-start' }}>
-                  <span className="caption" style={{ width: 64, flex: 'none', paddingTop: 2 }}>
-                    {shortDate(r.at)}
+              {[...logs].reverse().map((l) => (
+                <div key={l.id} className="list-item">
+                  <span className="caption" style={{ width: 64, flex: 'none' }}>
+                    {shortDate(l.at)}
                   </span>
-                  <span className="grow numeral-sm">
-                    {r.list.map((s) => (cardio ? cardioLabel(s) : setLabel(s.kg, s.reps))).join(' · ')}
-                  </span>
+                  <span className="grow numeral-sm">{cardio ? cardioLabel(l) : setLabel(l.kg, l.reps)}</span>
+                  <button className="btn btn-ghost btn-icon" onClick={() => setRemoving(l)} aria-label={`Supprimer la valeur du ${shortDate(l.at)}`}>
+                    <Icon name="trash" size={20} />
+                  </button>
                 </div>
               ))}
             </div>
           </div>
         </>
       )}
-    </main>
-  )
-}
-
-export function SessionDetail({ id }: { id: number }) {
-  const nav = useNav()
-  const session = useLiveQuery(() => db.sessions.get(id), [id])
-  const sets = useLiveQuery(() => db.sets.where('sessionId').equals(id).toArray(), [id]) ?? []
-  const exercises = useLiveQuery(() => db.exercises.toArray()) ?? []
-  const [confirm, setConfirm] = useState(false)
-  if (!session) return null
-  const exById = new Map(exercises.map((e) => [e.id!, e]))
-  const slots = [...new Set(sets.map((s) => s.slot))].sort((a, b) => a - b)
-
-  return (
-    <main className="screen">
-      <ScreenHead title={session.name} onBack={nav.back} />
-      <p className="caption" style={{ marginTop: 'calc(-1 * var(--space-4))' }}>
-        {shortDate(session.startedAt)}
-        {session.endedAt! > session.startedAt ? ` · ${duration(session.endedAt! - session.startedAt)}` : ''}
-      </p>
-      <div className="stack section" style={{ marginTop: 'var(--space-6)' }}>
-        {slots.map((slot) => {
-          const list = sets.filter((s) => s.slot === slot).sort((a, b) => a.index - b.index)
-          const ex = exById.get(list[0].exerciseId)
-          if (!ex) return null
-          return (
-            <button key={slot} className="card card-button" onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
-              <span className="title-md">{ex.name}</span>
-              <div className="stack-sm" style={{ marginTop: 'var(--space-2)' }}>
-                {list.map((s) => (
-                  <div key={s.id} className="row">
-                    <span className="label set-num">{s.index + 1}</span>
-                    <span className="numeral-sm">{ex.kind === 'cardio' ? cardioLabel(s) : setLabel(s.kg, s.reps)}</span>
-                  </div>
-                ))}
-              </div>
-            </button>
-          )
-        })}
-        <button className="btn btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => setConfirm(true)}>
-          <Icon name="trash" /> Supprimer la séance
-        </button>
-      </div>
-      {confirm && (
-        <Sheet title="Supprimer la séance" onClose={() => setConfirm(false)}>
-          <p style={{ marginTop: 0 }}>Cette séance et ses séries seront supprimées de l'historique.</p>
+      {removing && (
+        <Sheet title="Supprimer cette valeur" onClose={() => setRemoving(null)}>
+          <p style={{ marginTop: 0 }}>
+            {shortDate(removing.at)} · {cardio ? cardioLabel(removing) : setLabel(removing.kg, removing.reps)}
+          </p>
           <div className="stack-sm">
             <button
               className="btn btn-lg btn-danger"
               onClick={async () => {
-                await deleteSession(id)
-                nav.back()
+                await db.logs.delete(removing.id!)
+                setRemoving(null)
               }}
             >
               Supprimer
             </button>
-            <button className="btn btn-lg" onClick={() => setConfirm(false)}>
+            <button className="btn btn-lg" onClick={() => setRemoving(null)}>
               Annuler
             </button>
           </div>

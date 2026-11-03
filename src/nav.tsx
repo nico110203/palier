@@ -1,13 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-export type Tab = 'seance' | 'historique' | 'exercices'
+export type Tab = 'muscles' | 'historique' | 'exercices'
 
-export type View =
-  | { type: 'workout'; sessionId: number }
-  | { type: 'exercise'; id: number }
-  | { type: 'session'; id: number }
-  | { type: 'template'; id: number }
-  | { type: 'notes' }
+export type View = { type: 'muscle'; id: number } | { type: 'exercise'; id: number } | { type: 'notes' }
 
 interface Nav {
   tab: Tab
@@ -22,7 +17,7 @@ export const useNav = () => useContext(NavContext)
 
 /** Pile de vues synchronisée avec l'historique du navigateur, pour le bouton retour d'Android. */
 export function useNavState(): Nav {
-  const [tab, setTabState] = useState<Tab>('seance')
+  const [tab, setTabState] = useState<Tab>('muscles')
   const [stack, setStack] = useState<View[]>([])
   const depth = useRef(0)
 

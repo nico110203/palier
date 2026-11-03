@@ -208,10 +208,9 @@ textarea.input { padding: var(--space-3); min-height: 200px; font-family: var(--
 .superset-tag { display: inline-flex; align-items: center; gap: var(--space-1); }
 
 /* Exercise card: name left, editable sets right */
-.exo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; }
+.exo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; }
 .exo-name { background: none; border: 0; padding: 0; text-align: left; min-width: 0; }
 .exo-detail { display: block; font-size: 16px; line-height: 22px; color: var(--ink); }
-.exo-sets { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; }
 .set-fields { display: flex; align-items: center; gap: var(--space-2); }
 .times { font-size: 20px; line-height: 1; color: var(--ink-muted); }
 .num-field { position: relative; display: block; }
@@ -227,3 +226,7 @@ textarea.input { padding: var(--space-3); min-height: 200px; font-family: var(--
 @media (max-width: 360px) { .num-field input { width: 60px; } }
 .num-field.is-pr input { border-color: var(--accent); background: var(--accent-soft); }
 .num-field.is-pr .num-unit { color: var(--accent); font-weight: 600; }
+.hint { margin-top: calc(-1 * var(--space-4)); }
+.order-card { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.exo { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.exo input { -webkit-user-select: text; user-select: text; }

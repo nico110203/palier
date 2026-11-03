@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react'
 import { num, parseNum } from '../format'
 
 /* Icônes au trait 24 px, trait 2 px, d'après Lucide (ISC). */
@@ -151,4 +151,39 @@ export function ScreenHead({ title, onBack, children }: { title: string; onBack?
       {children}
     </header>
   )
+}
+
+/**
+ * Appui long (500 ms) sur un élément, hors champs de saisie et boutons internes.
+ * Renvoie les gestionnaires à poser sur l'élément ; `fired()` dit si le dernier appui était long.
+ */
+export function useLongPress(onLong: () => void, ms = 500) {
+  const timer = useRef<number | undefined>(undefined)
+  const start = useRef<{ x: number; y: number } | null>(null)
+  const long = useRef(false)
+  const cancel = () => {
+    window.clearTimeout(timer.current)
+    start.current = null
+  }
+  return {
+    fired: () => long.current,
+    handlers: {
+      onPointerDown: (e: PointerEvent) => {
+        long.current = false
+        if ((e.target as HTMLElement).closest('input, .no-long-press')) return
+        start.current = { x: e.clientX, y: e.clientY }
+        timer.current = window.setTimeout(() => {
+          long.current = true
+          navigator.vibrate?.(30)
+          onLong()
+        }, ms)
+      },
+      onPointerMove: (e: PointerEvent) => {
+        if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 10) cancel()
+      },
+      onPointerUp: cancel,
+      onPointerCancel: cancel,
+      onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+    },
+  }
 }

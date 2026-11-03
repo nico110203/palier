@@ -3,13 +3,13 @@ import { db, getSetting, setSetting } from './db'
 import { NavContext, useNavState, type Tab } from './nav'
 import { applyNotes, INITIAL_NOTES, parseNotes } from './notes'
 import { Icon } from './components/ui'
-import { Home } from './screens/Home'
-import { Workout } from './screens/Workout'
-import { ExerciseDetail, History, SessionDetail } from './screens/History'
-import { applyTheme, Manage, NotesImport, TemplateEditor, type Theme } from './screens/Manage'
+import { Muscles } from './screens/Muscles'
+import { MuscleView } from './screens/Muscle'
+import { ExerciseDetail, History } from './screens/History'
+import { applyTheme, Manage, NotesImport, type Theme } from './screens/Manage'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'seance', label: 'Séance', icon: 'dumbbell' },
+  { id: 'muscles', label: 'Muscles', icon: 'dumbbell' },
   { id: 'historique', label: 'Historique', icon: 'chart' },
   { id: 'exercices', label: 'Exercices', icon: 'list' },
 ]
@@ -45,14 +45,12 @@ export default function App() {
   const v = nav.view
 
   let screen
-  if (v?.type === 'workout') screen = <Workout sessionId={v.sessionId} />
+  if (v?.type === 'muscle') screen = <MuscleView id={v.id} />
   else if (v?.type === 'exercise') screen = <ExerciseDetail id={v.id} />
-  else if (v?.type === 'session') screen = <SessionDetail id={v.id} />
-  else if (v?.type === 'template') screen = <TemplateEditor id={v.id} />
   else if (v?.type === 'notes') screen = <NotesImport />
   else if (nav.tab === 'historique') screen = <History />
   else if (nav.tab === 'exercices') screen = <Manage />
-  else screen = <Home />
+  else screen = <Muscles />
 
   return (
     <NavContext.Provider value={nav}>

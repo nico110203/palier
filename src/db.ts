@@ -10,51 +10,38 @@ export interface Exercise {
   group: string
   kind: ExerciseKind
   perSide: boolean
-  /** Pas du stepper de charge, en kg. */
+  /** Pas de charge, en kg. */
   step: number
-  /** Repos par défaut après une série, en secondes. */
   rest: number
   archived?: boolean
 }
 
-export interface TemplateSlot {
+export interface MuscleSlot {
   exerciseId: number
   /** Enchaîné avec l'exercice précédent (superset). */
   superset: boolean
   hidden?: boolean
 }
 
-export interface Template {
+/** Un muscle (PEC, DOS…) : liste ordonnée d'exercices. */
+export interface Muscle {
   id?: number
   name: string
   order: number
-  slots: TemplateSlot[]
+  slots: MuscleSlot[]
 }
 
-export interface Session {
+/** Valeur d'un exercice pour un jour donné : une seule ligne par exercice et par jour. */
+export interface Log {
   id?: number
-  name: string
-  templateId?: number
-  slots: TemplateSlot[]
-  startedAt: number
-  endedAt?: number
-}
-
-export interface SetEntry {
-  id?: number
-  sessionId: number
   exerciseId: number
-  /** Position de l'exercice dans la séance. */
-  slot: number
-  index: number
+  /** Jour local AAAA-MM-JJ. */
+  day: string
+  at: number
   reps: number
   kg: number
-  minutes?: number
   speed?: number
-  incline?: number
-  done: boolean
-  /** Copie de session.startedAt pour trier l'historique sans jointure. */
-  at: number
+  minutes?: number
 }
 
 export interface Setting {
@@ -64,9 +51,8 @@ export interface Setting {
 
 export const db = new Dexie('palier') as Dexie & {
   exercises: EntityTable<Exercise, 'id'>
-  templates: EntityTable<Template, 'id'>
-  sessions: EntityTable<Session, 'id'>
-  sets: EntityTable<SetEntry, 'id'>
+  templates: EntityTable<Muscle, 'id'>
+  logs: EntityTable<Log, 'id'>
   settings: EntityTable<Setting, 'key'>
 }
 
@@ -77,6 +63,63 @@ db.version(1).stores({
   sets: '++id, sessionId, exerciseId, at, [exerciseId+at]',
   settings: 'key',
 })
+
+// v2 : plus de séances. Chaque exercice garde une valeur par jour.
+db.version(2)
+  .stores({
+    exercises: '++id, group',
+    templates: '++id, order',
+    logs: '++id, exerciseId, day, at, [exerciseId+day]',
+    sessions: null,
+    sets: null,
+    settings: 'key',
+  })
+  .upgrade(async (tx) => {
+    const sets = (await tx.table('sets').toArray()) as OldSet[]
+    await tx.table('logs').bulkAdd(setsToLogs(sets))
+    await tx
+      .table('templates')
+      .toCollection()
+      .modify((m: Muscle) => {
+        m.slots = dedupe(m.slots)
+      })
+  })
+
+interface OldSet {
+  exerciseId: number
+  at: number
+  reps: number
+  kg: number
+  speed?: number
+  minutes?: number
+  done?: boolean
+}
+
+/** Meilleure série de chaque exercice pour chaque jour. */
+export function setsToLogs(sets: OldSet[]): Log[] {
+  const byKey = new Map<string, Log>()
+  for (const s of sets) {
+    if (s.done === false) continue
+    const day = dayKey(s.at)
+    const key = `${s.exerciseId}|${day}`
+    const prev = byKey.get(key)
+    if (!prev || s.kg > prev.kg || (s.kg === prev.kg && s.reps > prev.reps) || (s.speed ?? 0) > (prev.speed ?? 0)) {
+      byKey.set(key, { exerciseId: s.exerciseId, day, at: s.at, reps: s.reps, kg: s.kg, speed: s.speed, minutes: s.minutes })
+    }
+  }
+  return [...byKey.values()]
+}
+
+/** Un exercice n'apparaît qu'une fois par muscle. */
+export function dedupe(slots: MuscleSlot[]): MuscleSlot[] {
+  const seen = new Set<number>()
+  return slots.filter((s) => !seen.has(s.exerciseId) && seen.add(s.exerciseId))
+}
+
+export function dayKey(ts = Date.now()): string {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export const GROUP_ORDER = ['PEC', 'DOS', 'ÉPAULES', 'BICEPS', 'TRICEPS', 'JAMBES', 'CARDIO']
 
@@ -97,36 +140,49 @@ export function setSetting(key: string, value: unknown) {
   return db.settings.put({ key, value })
 }
 
-/** Séries de la dernière séance terminée contenant cet exercice. */
-export async function lastSetsFor(exerciseId: number, beforeSessionId?: number): Promise<SetEntry[]> {
-  const all = await db.sets.where('exerciseId').equals(exerciseId).toArray()
-  const ended = new Set((await db.sessions.filter((s) => s.endedAt != null).toArray()).map((s) => s.id))
-  const past = all.filter((s) => s.sessionId !== beforeSessionId && ended.has(s.sessionId) && s.done)
-  if (!past.length) return []
-  const lastAt = Math.max(...past.map((s) => s.at))
-  const lastSession = past.find((s) => s.at === lastAt)!.sessionId
-  return past.filter((s) => s.sessionId === lastSession).sort((a, b) => a.index - b.index)
+/** Enregistre la valeur du jour (crée ou remplace la ligne du jour). */
+export async function saveToday(exerciseId: number, patch: Partial<Pick<Log, 'reps' | 'kg' | 'speed' | 'minutes'>>, current: Partial<Log>) {
+  const day = dayKey()
+  // Transaction rw : les frappes rapides sont sérialisées, sinon deux lignes du jour se créent.
+  await db.transaction('rw', db.logs, async () => {
+    const existing = await db.logs.where('[exerciseId+day]').equals([exerciseId, day]).first()
+    if (existing) await db.logs.update(existing.id!, { ...patch, at: Date.now() })
+    else
+      await db.logs.add({
+        exerciseId, day, at: Date.now(),
+        reps: current.reps ?? 0, kg: current.kg ?? 0, speed: current.speed, minutes: current.minutes,
+        ...patch,
+      })
+  })
 }
 
 export async function exportAll() {
   return {
     app: 'palier',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     exercises: await db.exercises.toArray(),
     templates: await db.templates.toArray(),
-    sessions: await db.sessions.toArray(),
-    sets: await db.sets.toArray(),
+    logs: await db.logs.toArray(),
   }
 }
 
-export async function importAll(data: Awaited<ReturnType<typeof exportAll>>) {
+export async function importAll(data: Awaited<ReturnType<typeof exportAll>> & { sets?: OldSet[] }) {
   if (data?.app !== 'palier') throw new Error('Fichier non reconnu')
-  await db.transaction('rw', [db.exercises, db.templates, db.sessions, db.sets], async () => {
-    await Promise.all([db.exercises.clear(), db.templates.clear(), db.sessions.clear(), db.sets.clear()])
+  const logs = data.logs ?? setsToLogs(data.sets ?? [])
+  await db.transaction('rw', [db.exercises, db.templates, db.logs], async () => {
+    await Promise.all([db.exercises.clear(), db.templates.clear(), db.logs.clear()])
     await db.exercises.bulkAdd(data.exercises)
-    await db.templates.bulkAdd(data.templates ?? [])
-    await db.sessions.bulkAdd(data.sessions)
-    await db.sets.bulkAdd(data.sets)
+    await db.templates.bulkAdd((data.templates ?? []).map((m) => ({ ...m, slots: dedupe(m.slots) })))
+    await db.logs.bulkAdd(logs)
   })
+}
+
+export async function moveMuscle(id: number, dir: -1 | 1) {
+  const all = await db.templates.orderBy('order').toArray()
+  const i = all.findIndex((m) => m.id === id)
+  const j = i + dir
+  if (i < 0 || j < 0 || j >= all.length) return
+  ;[all[i], all[j]] = [all[j], all[i]]
+  await db.transaction('rw', db.templates, () => Promise.all(all.map((m, k) => db.templates.update(m.id!, { order: k }))))
 }

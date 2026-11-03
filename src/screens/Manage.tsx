@@ -4,7 +4,6 @@ import { db, exportAll, getSetting, importAll, setSetting, sortGroups, type Exer
 import { num } from '../format'
 import { useNav } from '../nav'
 import { applyNotes, parseNotes } from '../notes'
-import { ExercisePicker } from './Workout'
 import { Icon, ScreenHead, Sheet } from '../components/ui'
 
 export type Theme = 'auto' | 'light' | 'dark'
@@ -16,7 +15,6 @@ export function applyTheme(t: Theme) {
 
 export function Manage() {
   const nav = useNav()
-  const templates = useLiveQuery(() => db.templates.orderBy('order').toArray()) ?? []
   const exercises = useLiveQuery(() => db.exercises.toArray()) ?? []
   const [editing, setEditing] = useState<Exercise | null>(null)
   const [theme, setTheme] = useState<Theme>('auto')
@@ -56,29 +54,6 @@ export function Manage() {
   return (
     <main className="screen">
       <ScreenHead title="Exercices" />
-
-      <div className="section" style={{ marginTop: 0 }}>
-        <span className="label">Modèles de séance</span>
-        <div className="card" style={{ paddingTop: 0, paddingBottom: 0 }}>
-          {templates.map((t) => (
-            <button key={t.id} className="list-item" onClick={() => nav.open({ type: 'template', id: t.id! })}>
-              <span className="grow">{t.name}</span>
-              <span className="caption">{t.slots.length}</span>
-              <Icon name="chevron" />
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn btn-ghost"
-          style={{ paddingLeft: 0, marginTop: 'var(--space-2)' }}
-          onClick={async () => {
-            const id = (await db.templates.add({ name: 'Nouveau modèle', order: templates.length, slots: [] })) as number
-            nav.open({ type: 'template', id })
-          }}
-        >
-          <Icon name="plus" /> Créer un modèle
-        </button>
-      </div>
 
       {groups.map((g) => (
         <div key={g} className="section">
@@ -150,7 +125,7 @@ function ExerciseEditor({ ex, groups, onClose }: { ex: Exercise; groups: string[
     onClose()
   }
   const remove = async () => {
-    const used = await db.sets.where('exerciseId').equals(ex.id!).count()
+    const used = await db.logs.where('exerciseId').equals(ex.id!).count()
     if (used) await db.exercises.update(ex.id!, { archived: true })
     else await db.exercises.delete(ex.id!)
     for (const t of await db.templates.toArray()) {
@@ -223,100 +198,6 @@ function ExerciseEditor({ ex, groups, onClose }: { ex: Exercise; groups: string[
   )
 }
 
-export function TemplateEditor({ id }: { id: number }) {
-  const nav = useNav()
-  const tpl = useLiveQuery(() => db.templates.get(id), [id])
-  const exercises = useLiveQuery(() => db.exercises.toArray()) ?? []
-  const [picking, setPicking] = useState(false)
-  const [confirm, setConfirm] = useState(false)
-  if (!tpl) return null
-  const exById = new Map(exercises.map((e) => [e.id!, e]))
-  const slots = tpl.slots
-  const save = (s: typeof slots) => db.templates.update(id, { slots: s })
-  const move = (i: number, d: number) => {
-    const s = [...slots]
-    ;[s[i], s[i + d]] = [s[i + d], s[i]]
-    save(s)
-  }
-
-  return (
-    <main className="screen">
-      <ScreenHead title={tpl.name} onBack={nav.back} />
-      <label className="field">
-        <span className="label">Nom du modèle</span>
-        <input className="input" value={tpl.name} onChange={(e) => db.templates.update(id, { name: e.target.value })} />
-      </label>
-
-      <div className="section">
-        <span className="label">Exercices</span>
-        <div className="stack-sm">
-          {slots.map((s, i) => (
-            <div key={i} className="card" style={{ padding: 'var(--space-2) var(--space-2) var(--space-2) var(--space-4)' }}>
-              <div className="row">
-                <span className="grow">{exById.get(s.exerciseId)?.name ?? '?'}</span>
-                <button className="btn btn-ghost btn-icon" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Monter">
-                  <Icon name="up" />
-                </button>
-                <button className="btn btn-ghost btn-icon" disabled={i === slots.length - 1} onClick={() => move(i, 1)} aria-label="Descendre">
-                  <Icon name="down" />
-                </button>
-                <button className="btn btn-ghost btn-icon" onClick={() => save(slots.filter((_, j) => j !== i))} aria-label="Retirer">
-                  <Icon name="x" />
-                </button>
-              </div>
-              {i > 0 && (
-                <label className="toggle-row caption">
-                  <span>Enchaîné avec le précédent</span>
-                  <input type="checkbox" checked={s.superset} onChange={(e) => save(slots.map((x, j) => (j === i ? { ...x, superset: e.target.checked } : x)))} />
-                </label>
-              )}
-            </div>
-          ))}
-        </div>
-        <button className="btn btn-ghost" style={{ paddingLeft: 0, marginTop: 'var(--space-2)' }} onClick={() => setPicking(true)}>
-          <Icon name="plus" /> Ajouter un exercice
-        </button>
-      </div>
-
-      <div className="section">
-        <button className="btn btn-ghost" style={{ color: 'var(--danger)', paddingLeft: 0 }} onClick={() => setConfirm(true)}>
-          <Icon name="trash" /> Supprimer le modèle
-        </button>
-      </div>
-
-      {picking && (
-        <ExercisePicker
-          exercises={exercises}
-          onPick={(eid) => {
-            setPicking(false)
-            save([...slots, { exerciseId: eid, superset: false }])
-          }}
-          onClose={() => setPicking(false)}
-        />
-      )}
-      {confirm && (
-        <Sheet title="Supprimer le modèle" onClose={() => setConfirm(false)}>
-          <p style={{ marginTop: 0 }}>Les exercices et l'historique sont conservés.</p>
-          <div className="stack-sm">
-            <button
-              className="btn btn-lg btn-danger"
-              onClick={async () => {
-                await db.templates.delete(id)
-                nav.back()
-              }}
-            >
-              Supprimer
-            </button>
-            <button className="btn btn-lg" onClick={() => setConfirm(false)}>
-              Annuler
-            </button>
-          </div>
-        </Sheet>
-      )}
-    </main>
-  )
-}
-
 export function NotesImport() {
   const nav = useNav()
   const [text, setText] = useState('')
@@ -345,7 +226,7 @@ export function NotesImport() {
         style={{ marginTop: 'var(--space-4)' }}
         onClick={async () => {
           const r = await applyNotes(parsed)
-          setResult(`${r.exercises} exercice${r.exercises > 1 ? 's' : ''} créé${r.exercises > 1 ? 's' : ''}, ${r.sessions} séance${r.sessions > 1 ? 's' : ''} ajoutée${r.sessions > 1 ? 's' : ''} à l'historique`)
+          setResult(`${r.exercises} exercice${r.exercises > 1 ? 's' : ''} créé${r.exercises > 1 ? 's' : ''}, ${r.logs} valeur${r.logs > 1 ? 's' : ''} ajoutée${r.logs > 1 ? 's' : ''} à l'historique`)
           setText('')
         }}
       >

@@ -1,4 +1,4 @@
-import { db, type Exercise, type TemplateSlot } from './db'
+import { dayKey, db, type Exercise, type MuscleSlot } from './db'
 
 /** Notes de départ de Nicolas (bloc-notes Android). */
 export const INITIAL_NOTES = `PEC
@@ -137,17 +137,17 @@ function num0(x: number) {
   return String(x).replace('.', ',')
 }
 
-/** Crée exercices, modèles et une séance par groupe (datée de la veille, ou de la date notée). */
-export async function applyNotes(groups: ParsedGroup[]): Promise<{ exercises: number; sessions: number }> {
+/** Crée exercices, muscles et une valeur par exercice (datée de la veille, ou de la date notée). */
+export async function applyNotes(groups: ParsedGroup[]): Promise<{ exercises: number; logs: number }> {
   let createdExercises = 0
-  let createdSessions = 0
-  const importDay = new Date()
-  importDay.setDate(importDay.getDate() - 1)
-  importDay.setHours(12, 0, 0, 0)
+  let createdLogs = 0
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  yesterday.setHours(12, 0, 0, 0)
 
-  await db.transaction('rw', [db.exercises, db.templates, db.sessions, db.sets], async () => {
+  await db.transaction('rw', [db.exercises, db.templates, db.logs], async () => {
     const existing = await db.exercises.toArray()
-    let templateOrder = await db.templates.count()
+    let order = await db.templates.count()
 
     const findOrCreate = async (group: string, e: ParsedEntry): Promise<number> => {
       const hit = existing.find((x) => x.group === group && x.name.toLowerCase() === e.name.toLowerCase())
@@ -159,50 +159,31 @@ export async function applyNotes(groups: ParsedGroup[]): Promise<{ exercises: nu
         kind: e.kind,
         perSide: e.perSide,
         step: e.kind === 'cardio' ? 0.5 : /halt[èe]re|lat[ée]rales/i.test(e.name) ? 1 : 2.5,
-        rest: e.kind === 'cardio' ? 0 : 120,
+        rest: 0,
       }
-      ex.id = await db.exercises.add(ex)
+      ex.id = (await db.exercises.add(ex)) as number
       existing.push(ex)
       createdExercises++
-      return ex.id!
+      return ex.id
     }
 
     for (const g of groups) {
-      const undated = g.entries.filter((e) => e.at == null)
-      const slots: TemplateSlot[] = []
-      const ids: number[] = []
+      const slots: MuscleSlot[] = []
       for (const e of g.entries) {
         const id = await findOrCreate(g.group, e)
-        ids.push(id)
-        // Une ligne datée (historique cardio) n'ajoute l'exercice au modèle qu'une fois.
-        if (e.at == null || !slots.some((s) => s.exerciseId === id)) slots.push({ exerciseId: id, superset: e.superset })
+        if (!slots.some((s) => s.exerciseId === id)) slots.push({ exerciseId: id, superset: e.superset })
+        const at = e.at ?? yesterday.getTime()
+        const day = dayKey(at)
+        // Même exercice noté deux fois le même jour : on garde la meilleure valeur.
+        const prev = await db.logs.where('[exerciseId+day]').equals([id, day]).first()
+        if (prev && (prev.kg > (e.kg ?? 0) || (prev.kg === (e.kg ?? 0) && prev.reps >= (e.reps ?? 0)) || (prev.speed ?? 0) > (e.speed ?? 0))) continue
+        if (prev) await db.logs.delete(prev.id!)
+        else createdLogs++
+        await db.logs.add({ exerciseId: id, day, at, reps: e.reps ?? 0, kg: e.kg ?? 0, speed: e.speed, minutes: e.minutes })
       }
-
-      const tpl = await db.templates.filter((t) => t.name === g.group).first()
-      if (!tpl) await db.templates.add({ name: g.group, order: templateOrder++, slots })
-
-      if (undated.length) {
-        const at = importDay.getTime()
-        const sessionId = (await db.sessions.add({ name: g.group, slots, startedAt: at, endedAt: at })) as number
-        createdSessions++
-        let slot = 0
-        for (const e of g.entries) {
-          if (e.at != null) continue
-          await db.sets.add({
-            sessionId, exerciseId: ids[g.entries.indexOf(e)], slot: slot++, index: 0,
-            reps: e.reps ?? 0, kg: e.kg ?? 0, speed: e.speed, incline: e.incline, minutes: e.minutes,
-            done: true, at,
-          })
-        }
-      }
-
-      for (const e of g.entries.filter((x) => x.at != null)) {
-        const id = ids[g.entries.indexOf(e)]
-        const sessionId = (await db.sessions.add({ name: e.name, slots: [{ exerciseId: id, superset: false }], startedAt: e.at!, endedAt: e.at! })) as number
-        createdSessions++
-        await db.sets.add({ sessionId, exerciseId: id, slot: 0, index: 0, reps: 0, kg: 0, speed: e.speed, incline: e.incline, minutes: e.minutes, done: true, at: e.at! })
-      }
+      const muscle = await db.templates.filter((t) => t.name === g.group).first()
+      if (!muscle) await db.templates.add({ name: g.group, order: order++, slots })
     }
   })
-  return { exercises: createdExercises, sessions: createdSessions }
+  return { exercises: createdExercises, logs: createdLogs }
 }
