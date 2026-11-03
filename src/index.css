@@ -128,6 +128,7 @@ button { cursor: pointer; }
 .section { margin-top: var(--space-8); }
 .section > .label { display: block; margin: 0 var(--space-1) var(--space-3); font-size: 15px; font-weight: 600; color: var(--ink); }
 .stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.stack:has(> .exo) { gap: var(--space-2); }
 .stack-sm { display: flex; flex-direction: column; gap: var(--space-2); }
 .row { display: flex; align-items: center; gap: var(--space-3); }
 .grow { flex: 1; min-width: 0; }
@@ -264,28 +265,23 @@ button.list-item:active { opacity: 0.6; }
 .superset-tag { display: inline-flex; flex: none; color: var(--accent); }
 
 /* Ligne exercice : nom à gauche, valeurs à droite, tout sur une ligne */
-.exo { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-radius: var(--radius-lg); }
-.exo-name { flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; font-size: 15px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: var(--space-2); }
-.exo-name .title-md { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.exo-name svg { flex: none; color: var(--ink-faint); }
-.exo-name-input { flex: 1; min-width: 0; height: 40px; padding: 0 var(--space-2); border: 1.5px solid var(--accent); border-radius: var(--radius-sm); background: var(--surface-inset); font-size: 15px; font-weight: 600; outline: none; }
+.exo { display: flex; gap: var(--space-2); align-items: center; min-height: 52px; padding: 6px 6px 6px var(--space-3); border-radius: var(--radius-md); }
+.exo-name { flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; font-size: 14px; line-height: 18px; font-weight: 600; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .exo-pr { display: inline-flex; align-items: center; gap: 4px; margin-top: var(--space-2); height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.set-fields { display: flex; align-items: center; gap: 4px; flex: none; }
-.times { font-size: 16px; line-height: 1; color: var(--ink-faint); }
+.set-fields { display: flex; align-items: center; gap: 3px; flex: none; }
+.times { font-size: 13px; line-height: 1; color: var(--ink-faint); }
 .num-field { position: relative; display: block; }
 .num-field input {
-  width: 58px; height: 46px; padding: 0 var(--space-1) 12px; text-align: center;
-  border: 1.5px solid transparent; border-radius: 14px; background: var(--surface-raised);
-  font-size: 17px; font-weight: 600;
+  width: 46px; height: 38px; padding: 0 2px; text-align: center;
+  border: 1.5px solid transparent; border-radius: 11px; background: var(--surface-raised);
+  font-size: 16px; font-weight: 600;
   transition: border-color var(--ease-state), box-shadow var(--ease-state), background var(--ease-state);
 }
 .num-field input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 4px var(--accent-soft); }
-.num-unit { position: absolute; left: 0; right: 0; bottom: 5px; text-align: center; font-size: 10px; line-height: 12px; font-weight: 500; color: var(--ink-muted); pointer-events: none; }
 .is-hidden { opacity: 0.5; }
-@media (max-width: 360px) { .num-field input { width: 52px; } }
+@media (max-width: 360px) { .num-field input { width: 42px; } }
 .num-field.is-pr input { background: var(--grad-primary); color: var(--on-accent); }
-.num-field.is-pr .num-unit { color: rgb(255 255 255 / 0.9); font-weight: 600; }
-.hint { margin-top: calc(-1 * var(--space-4)); margin-bottom: var(--space-4); }
+.num-field.is-pr .hint { margin-top: calc(-1 * var(--space-4)); margin-bottom: var(--space-4); }
 .order-card { padding-top: var(--space-2); padding-bottom: var(--space-2); }
 .exo { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .exo input { -webkit-user-select: text; user-select: text; }

@@ -87,7 +87,13 @@ export function ExerciseDetail({ id }: { id: number }) {
   const ex = useLiveQuery(() => db.exercises.get(id), [id])
   const logs = useLiveQuery(() => db.logs.where('exerciseId').equals(id).sortBy('at'), [id])
   const [removing, setRemoving] = useState<Log | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
   if (!ex || !logs) return null
+  const rename = async () => {
+    const clean = renaming?.trim()
+    if (clean) await db.exercises.update(id, { name: clean })
+    setRenaming(null)
+  }
 
   const cardio = ex.kind === 'cardio'
   const points = logs.map((l) => ({ at: l.at, value: cardio ? l.speed ?? 0 : l.kg }))
@@ -96,8 +102,11 @@ export function ExerciseDetail({ id }: { id: number }) {
 
   return (
     <main className="screen">
-      <ScreenHead title={ex.name} onBack={nav.back} />
-      {ex.detail && <p className="caption" style={{ marginTop: 'calc(-1 * var(--space-4))' }}>{ex.detail}</p>}
+      <ScreenHead title={ex.name} onBack={nav.back}>
+        <button className="btn btn-ghost btn-icon" onClick={() => setRenaming(ex.name)} aria-label="Renommer l'exercice">
+          <Icon name="pencil" />
+        </button>
+      </ScreenHead>
       {!logs.length ? (
         <p className="empty">Pas encore de valeur pour cet exercice.</p>
       ) : (
@@ -169,6 +178,22 @@ export function ExerciseDetail({ id }: { id: number }) {
             </div>
           </div>
         </>
+      )}
+      {renaming !== null && (
+        <Sheet title="Renommer l'exercice" onClose={() => setRenaming(null)}>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault()
+              rename()
+            }}
+          >
+            <input className="input" value={renaming} onChange={(e) => setRenaming(e.target.value)} onFocus={(e) => e.currentTarget.select()} autoFocus aria-label="Nom de l'exercice" />
+            <button className="btn btn-lg btn-primary" disabled={!renaming.trim()}>
+              Enregistrer
+            </button>
+          </form>
+        </Sheet>
       )}
       {removing && (
         <Sheet title="Supprimer cette valeur" onClose={() => setRemoving(null)}>

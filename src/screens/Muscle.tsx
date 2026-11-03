@@ -6,7 +6,7 @@ import { useNav } from '../nav'
 import { Icon, ScreenHead, Sheet, useLongPress } from '../components/ui'
 
 /** Champ numérique éditable sur place : chaque frappe est enregistrée. */
-function NumField({ value, label, unit, onSave, decimal = true }: { value: number; label: string; unit: string; onSave: (n: number) => void; decimal?: boolean }) {
+function NumField({ value, label, onSave, decimal = true }: { value: number; label: string; onSave: (n: number) => void; decimal?: boolean }) {
   const [draft, setDraft] = useState(num(value))
   const focused = useRef(false)
   useEffect(() => {
@@ -33,40 +33,7 @@ function NumField({ value, label, unit, onSave, decimal = true }: { value: numbe
           onSave(decimal ? parseNum(v) : Math.round(parseNum(v)))
         }}
       />
-      <span className="num-unit">{unit}</span>
     </label>
-  )
-}
-
-/** Nom de l'exercice, modifiable sur place au toucher. */
-function ExoName({ ex, longPressed }: { ex: Exercise; longPressed: () => boolean }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const commit = () => {
-    const clean = draft?.trim()
-    if (clean && clean !== ex.name) db.exercises.update(ex.id!, { name: clean })
-    setDraft(null)
-  }
-  if (draft === null) {
-    return (
-      <button className="exo-name" onClick={() => !longPressed() && setDraft(ex.name)} aria-label={`Renommer ${ex.name}`}>
-        {ex.name}
-      </button>
-    )
-  }
-  return (
-    <input
-      className="exo-name-input"
-      value={draft}
-      autoFocus
-      aria-label="Nom de l'exercice"
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') setDraft(null)
-      }}
-    />
   )
 }
 
@@ -120,7 +87,7 @@ export function MuscleView({ id }: { id: number }) {
             <span className="label">Nom du muscle</span>
             <input className="input" value={muscle.name} onChange={(e) => db.templates.update(id, { name: e.target.value.toUpperCase() })} />
           </label>
-          <p className="caption hint" style={{ margin: 0 }}>Flèches pour changer l'ordre, case pour masquer un exercice. Touche un nom pour voir son historique.</p>
+          <p className="caption hint" style={{ margin: 0 }}>Flèches pour changer l'ordre, case pour masquer un exercice.</p>
         </div>
       )}
 
@@ -133,10 +100,7 @@ export function MuscleView({ id }: { id: number }) {
             return (
               <div key={slot.exerciseId} className={`card order-card${slot.hidden ? ' is-hidden' : ''}`}>
                 <div className="row">
-                  <button className="exo-name grow" onClick={() => nav.open({ type: 'exercise', id: ex.id! })}>
-                    <span className="title-md">{ex.name}</span>
-                    <Icon name="chart" size={16} />
-                  </button>
+                  <span className="title-md grow">{ex.name}</span>
                   <button className="btn btn-ghost btn-icon" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Monter ${ex.name}`}>
                     <Icon name="up" />
                   </button>
@@ -163,19 +127,21 @@ export function MuscleView({ id }: { id: number }) {
                   <Icon name="link" size={14} />
                 </span>
               )}
-              <ExoName ex={ex} longPressed={press.fired} />
+              <button className="exo-name" onClick={() => !press.fired() && nav.open({ type: 'exercise', id: ex.id! })}>
+                {ex.name}
+              </button>
 
               <div className="set-fields">
                 {cardio ? (
                   <>
-                    <NumField value={cur?.speed ?? 0} unit="km/h" label={`${ex.name}, vitesse`} onSave={(v) => save({ speed: v })} />
-                    <NumField value={cur?.minutes ?? 0} unit="min" label={`${ex.name}, durée`} onSave={(v) => save({ minutes: v })} />
+                    <NumField value={cur?.speed ?? 0} label={`${ex.name}, vitesse`} onSave={(v) => save({ speed: v })} />
+                    <NumField value={cur?.minutes ?? 0} label={`${ex.name}, durée`} onSave={(v) => save({ minutes: v })} />
                   </>
                 ) : (
                   <>
-                    <NumField value={cur?.reps ?? 0} unit="reps" decimal={false} label={`${ex.name}, répétitions`} onSave={(v) => save({ reps: v })} />
+                    <NumField value={cur?.reps ?? 0} decimal={false} label={`${ex.name}, répétitions`} onSave={(v) => save({ reps: v })} />
                     <span className="times" aria-hidden="true">×</span>
-                    <NumField value={cur?.kg ?? 0} unit="kg" label={`${ex.name}, charge en kg`} onSave={(v) => save({ kg: v })} />
+                    <NumField value={cur?.kg ?? 0} label={`${ex.name}, charge en kg`} onSave={(v) => save({ kg: v })} />
                   </>
                 )}
               </div>
